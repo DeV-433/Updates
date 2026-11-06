@@ -1,0 +1,38 @@
+#!/bin/bash
+# Prints one tab-separated line per pending update: source<TAB>name<TAB>old<TAB>new
+# source is arch, omarchy or aur. A source that could not be checked prints
+# "error<TAB>arch" or "error<TAB>aur" instead. Exits 1 only if nothing could be checked.
+set -u
+declare -A omarchy_pkgs
+while read -r _ name _; do omarchy_pkgs[$name]=1; done < <(pacman -Sl omarchy 2>/dev/null)
+
+ok=0
+# checkupdates syncs a private copy of the db, so it needs no root.
+# Exit 0 = updates, 2 = none, anything else = failure.
+out=$(checkupdates --nocolor 2>/dev/null); rc=$?
+if (( rc == 0 || rc == 2 )); then
+  ok=1
+  while read -r name old _ new; do
+    [[ -z ${name:-} ]] && continue
+    if [[ -n ${omarchy_pkgs[$name]:-} ]]; then src=omarchy; else src=arch; fi
+    printf '%s\t%s\t%s\t%s\n' "$src" "$name" "$old" "$new"
+  done <<<"$out"
+else
+  printf 'error\tarch\n'
+fi
+
+if command -v yay >/dev/null; then
+  # yay -Qua exits 1 with no output when there is nothing to update, so only
+  # treat a timeout/crash (or output that is not version lines) as a failure.
+  aur=$(timeout 60 yay -Qua 2>/dev/null); rc=$?
+  if (( rc == 0 )) || { (( rc == 1 )) && [[ -z $aur ]]; }; then
+    ok=1
+    while read -r name old _ new; do
+      [[ -z ${name:-} ]] && continue
+      printf 'aur\t%s\t%s\t%s\n' "$name" "$old" "$new"
+    done <<<"$aur"
+  else
+    printf 'error\taur\n'
+  fi
+fi
+(( ok )) || exit 1
