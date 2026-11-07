@@ -263,7 +263,8 @@ Panel {
             }
             Text {
               id: ver
-              width: Math.min(implicitWidth, Style.space(150))
+              width: Style.space(150)
+              horizontalAlignment: Text.AlignRight
               textFormat: Text.PlainText
               text: modelData.from + " → " + modelData.to
               color: Commons.Color.muted
