@@ -15,18 +15,19 @@ to `right`).
 ## Usage
 
 1. Click the box icon on the bar to open the flyout.
-2. Press **Check now**. Arch, Omarchy and AUR are checked together.
-3. Pending updates are listed by package name, repo and `old → new` version.
-   The list scrolls when it is long.
-4. If anything is pending, **Update now** becomes active. Click it to launch
-   the Omarchy update in a floating terminal.
+2. Press **Check**. Arch, Omarchy and AUR are checked together.
+3. Pending updates are listed by package name, repo and `old → new` version,
+   with the changed part of the new version highlighted. A colored bar shows
+   the split between repos, and the chips above the list filter it by repo.
+4. Click **Install N updates** to launch the Omarchy update in a floating
+   terminal.
 
 Notes:
 
-- Nothing is checked in the background; it only runs when you press **Check now**.
+- Nothing is checked in the background; it only runs when you press **Check**.
 - If Arch or AUR can't be checked, the flyout says so instead of showing "up to date".
-- **Update now** shows "Reboot required" when a kernel, systemd, glibc, CPU
-  microcode or NVIDIA driver update is pending.
+- When a kernel, systemd, glibc, CPU microcode or NVIDIA driver update is
+  pending, the flyout says to reboot afterwards and marks those packages.
 
 ## Requirements
 

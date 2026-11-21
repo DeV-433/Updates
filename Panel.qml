@@ -1,6 +1,4 @@
 import QtQuick
-// Controls is imported before qs.Ui so Button keeps resolving to the Omarchy widget.
-import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import qs.Ui
@@ -40,13 +38,13 @@ Panel {
   function closeForPopoutSwitch() { root.close() }
 
   // Packages whose upgrade needs a reboot to take full effect.
+  function isCorePackage(n) {
+    return /^linux(-lts|-zen|-hardened|-rt|-cachyos[a-z0-9-]*)?$/.test(n)
+      || /^(systemd|glibc|intel-ucode|amd-ucode)$/.test(n)
+      || /^nvidia(-open|-lts|-dkms|-open-dkms|-utils)?$/.test(n)
+  }
   readonly property bool rebootNeeded: {
-    for (var i = 0; i < updates.length; i++) {
-      var n = updates[i].name
-      if (/^linux(-lts|-zen|-hardened|-rt|-cachyos[a-z0-9-]*)?$/.test(n)
-          || /^(systemd|glibc|intel-ucode|amd-ucode)$/.test(n)
-          || /^nvidia(-open|-lts|-dkms|-open-dkms|-utils)?$/.test(n)) return true
-    }
+    for (var i = 0; i < updates.length; i++) if (isCorePackage(updates[i].name)) return true
     return false
   }
 
@@ -103,6 +101,7 @@ Panel {
     var v = palette[key]
     return v ? v : (src === "aur" ? Commons.Color.urgent : Commons.Color.accent)
   }
+  function paletteColor(key, fallback) { return palette[key] ? palette[key] : fallback }
   function parsePalette(raw) {
     var out = {}
     var lines = String(raw).split("\n")
@@ -151,7 +150,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
+    contentWidth: panel.fittedContentWidth(Style.space(400))
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
     PanelKeyCatcher {
@@ -161,160 +160,10 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
     }
 
-    Column {
+    UpdatesView {
       id: content
       width: parent.width
-      spacing: Style.space(10)
-
-      Row {
-        width: parent.width
-        spacing: Style.space(8)
-
-        Text {
-          id: headerTitle
-          text: "Updates"
-          textFormat: Text.PlainText
-          color: root.foreground
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Style.font.title
-          font.bold: true
-        }
-
-        Text {
-          visible: root.checked && !root.checking && text !== ""
-          width: parent.width - headerTitle.width - parent.spacing
-          anchors.baseline: headerTitle.baseline
-          textFormat: Text.PlainText
-          elide: Text.ElideRight
-          text: root.agoText()
-          color: Commons.Color.muted
-          font.family: Style.font.family
-          font.pixelSize: Style.font.caption
-        }
-      }
-
-      Text {
-        width: parent.width
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        text: root.checking ? "Checking Arch, Omarchy and AUR…"
-          : root.errorMessage !== "" ? root.errorMessage
-          : !root.checked ? "Not checked yet"
-          : root.total === 0 ? (root.aurFailed || root.archFailed ? "No updates found" : "Everything is up to date")
-          : root.total + " updates · Omarchy " + root.count("omarchy")
-            + " · Arch " + root.count("arch") + " · AUR " + root.count("aur")
-        color: root.errorMessage !== "" ? Commons.Color.urgent : Commons.Color.muted
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-      }
-
-      Text {
-        width: parent.width
-        visible: root.checked && (root.aurFailed || root.archFailed) && !root.checking
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        text: root.aurFailed && root.archFailed ? "Arch and AUR checks failed"
-          : root.aurFailed ? "AUR check failed · AUR updates are not shown"
-          : "Arch check failed · Arch and Omarchy updates are not shown"
-        color: Commons.Color.urgent
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-      }
-
-      ListView {
-        id: list
-        visible: root.total > 0
-        width: parent.width
-        height: Math.min(contentHeight, Style.space(240))
-        spacing: Style.space(4)
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        interactive: contentHeight > height
-        model: root.updates
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-        delegate: Item {
-          required property var modelData
-          width: ListView.view.width
-          height: row.implicitHeight
-
-          Row {
-            id: row
-            width: parent.width - Style.space(8)
-            spacing: Style.space(8)
-
-            Text {
-              width: parent.width - tag.width - ver.width - parent.spacing * 2
-              textFormat: Text.PlainText
-              text: modelData.name
-              color: root.foreground
-              elide: Text.ElideRight
-              font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
-            }
-            Text {
-              id: tag
-              width: Style.space(56)
-              textFormat: Text.PlainText
-              text: root.sourceLabel(modelData.source)
-              color: root.repoColor(modelData.source)
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-            }
-            Text {
-              id: ver
-              width: Style.space(150)
-              horizontalAlignment: Text.AlignRight
-              textFormat: Text.PlainText
-              text: modelData.from + " → " + modelData.to
-              color: Commons.Color.muted
-              elide: Text.ElideLeft
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-            }
-          }
-        }
-      }
-
-      Row {
-        width: parent.width
-        spacing: Style.space(8)
-
-        Button {
-          width: (parent.width - parent.spacing) / 2
-          height: updateButton.height
-          bordered: true
-          iconText: "\uf021"
-          iconSpinning: root.checking
-          text: root.checking ? "Checking…" : "Check now"
-          enabled: !root.checking
-          onClicked: root.check()
-        }
-        Button {
-          id: updateButton
-          width: (parent.width - parent.spacing) / 2
-          height: root.rebootNeeded && root.total > 0 ? Style.space(54) : implicitHeight
-          bordered: true
-          selected: enabled
-          iconText: "\uf019"
-          text: "Update now"
-          enabled: root.total > 0 && !root.checking
-          opacity: enabled ? 1 : 0.4
-          onClicked: root.runUpdate()
-
-          Text {
-            visible: root.rebootNeeded && root.total > 0
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: Style.space(6)
-            textFormat: Text.PlainText
-            text: "Reboot required"
-            color: Commons.Color.urgent
-            font.family: Style.font.family
-            font.pixelSize: Style.font.caption
-          }
-        }
-      }
+      ctl: root
     }
   }
 }
