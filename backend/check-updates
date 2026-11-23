@@ -1,7 +1,9 @@
 #!/bin/bash
 # Prints one tab-separated line per pending update: source<TAB>name<TAB>old<TAB>new
 # source is arch, omarchy or aur. A source that could not be checked prints
-# "error<TAB>arch" or "error<TAB>aur" instead. Exits 1 only if nothing could be checked.
+# "error<TAB>arch" or "error<TAB>aur" instead. "done<TAB>arch" / "done<TAB>aur"
+# mark each source finishing, so the flyout can show progress.
+# Exits 1 only if nothing could be checked.
 set -u
 declare -A omarchy_pkgs
 while read -r _ name _; do omarchy_pkgs[$name]=1; done < <(pacman -Sl omarchy 2>/dev/null)
@@ -20,6 +22,7 @@ if (( rc == 0 || rc == 2 )); then
 else
   printf 'error\tarch\n'
 fi
+printf 'done\tarch\n'
 
 if command -v yay >/dev/null; then
   # yay -Qua exits 1 with no output when there is nothing to update, so only
@@ -35,4 +38,5 @@ if command -v yay >/dev/null; then
     printf 'error\taur\n'
   fi
 fi
+printf 'done\taur\n'
 (( ok )) || exit 1

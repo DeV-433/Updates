@@ -7,7 +7,8 @@ BarWidget {
   moduleName: "io.github.devanshu.updatecheck"
 
   readonly property int total: panelLoader.item ? panelLoader.item.total : 0
-  readonly property bool checking: panelLoader.item ? panelLoader.item.checking === true : false
+  readonly property bool checking: panelLoader.item ? (panelLoader.item.checking === true || panelLoader.item.pluginChecking === true
+       || panelLoader.item.pluginBusy === true) : false
 
   function injectPanel() {
     if (!panelLoader.item) return
@@ -59,7 +60,7 @@ BarWidget {
 
     NumberAnimation on spinAngle {
       id: spin
-      running: root.checking
+      running: root.checking && !Style.reduceMotion
       from: 0; to: 360
       duration: 1200
       loops: Animation.Infinite

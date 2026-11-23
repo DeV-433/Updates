@@ -20,7 +20,89 @@ Panel {
   property bool archFailed: false
   property real lastCheckedMs: 0
   property real nowMs: Date.now()
-  readonly property int total: updates.length
+  readonly property int systemTotal: updates.length
+  // Plugins with local commits or edits are hidden by default and not counted.
+  readonly property int total: systemTotal + pluginTotal - pluginLocalCount
+
+  // ── Plugins ───────────────────────────────────────────────────────────
+  // State lives in a cache file written by backend/check-plugins and
+  // backend/update-plugins, so it survives the plugin reload an update causes.
+  property bool pluginChecking: false
+  property var pluginUpdates: []
+  property var pluginErrors: []
+  property real pluginCheckedMs: 0
+  readonly property int pluginTotal: pluginUpdates.length
+  function isLocal(p) { return p.status === "diverged" || p.status === "blocked" }
+  readonly property int pluginLocalCount: pluginUpdates.filter(isLocal).length
+  readonly property var pluginUpdatable: pluginUpdates.filter(function(p) {
+    return p.status === "pending" || p.status === "failed"
+  })
+  readonly property bool pluginBusy: {
+    for (var i = 0; i < pluginUpdates.length; i++) if (pluginUpdates[i].status === "updating") return true
+    return false
+  }
+  readonly property string pluginStatePath:
+    (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/omarchy-updatecheck/plugins.tsv"
+
+  function backendPath(name) {
+    return String(Qt.resolvedUrl("backend/" + name)).replace(/^file:\/\//, "")
+  }
+
+  // Live progress while checking, from the backends' done/total lines.
+  property bool archDone: false
+  property bool aurDone: false
+  property int pluginFetchTotal: 0
+  property int pluginFetchDone: 0
+  function scanSystemProgress(t) {
+    archDone = t.indexOf("done\tarch") >= 0
+    aurDone = t.indexOf("done\taur") >= 0
+  }
+  function scanPluginProgress(t) {
+    var m = t.match(/^total\t(\d+)$/m)
+    pluginFetchTotal = m ? Math.min(Number(m[1]), 1000) : 0
+    var d = t.match(/^done\t/mg)
+    pluginFetchDone = d ? Math.min(d.length, pluginFetchTotal) : 0
+  }
+
+  function checkPlugins() {
+    if (checkPluginsProc.running || pluginBusy) return
+    pluginFetchTotal = 0
+    pluginFetchDone = 0
+    pluginChecking = true
+    checkPluginsProc.running = true
+  }
+
+  function updatePlugins(ids) {
+    var valid = ids.filter(function(id) { return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) && id.indexOf("..") < 0 })
+    if (valid.length === 0) return
+    // Mark them now so the buttons react before the script's first write lands.
+    pluginUpdates = pluginUpdates.map(function(p) {
+      return valid.indexOf(p.id) >= 0 ? Object.assign({}, p, { status: "updating" }) : p
+    })
+    // Detached: pulling a plugin reloads every plugin, this one included.
+    Quickshell.execDetached([backendPath("update-plugins")].concat(valid))
+  }
+  function updateAllPlugins() {
+    updatePlugins(pluginUpdatable.map(function(p) { return p.id }))
+  }
+
+  function parsePlugins(raw) {
+    var out = [], errs = [], checkedAt = 0
+    var lines = String(raw).split("\n")
+    for (var i = 0; i < lines.length && out.length < 500; i++) {
+      var f = lines[i].split("\t")
+      if (f[0] === "checked" && f.length === 2) checkedAt = Number(f[1]) * 1000 || 0
+      else if (f[0] === "error" && f.length === 2) errs.push(f[1].slice(0, 100))
+      else if (f[0] === "plugin" && f.length === 7
+               && ["pending", "updating", "failed", "blocked", "diverged"].indexOf(f[6]) >= 0)
+        out.push({ id: f[1].slice(0, 100), name: f[2].slice(0, 80), from: f[3].slice(0, 40),
+                   to: f[4].slice(0, 40), commits: Math.min(Number(f[5]) || 0, 99999), status: f[6] })
+    }
+    pluginUpdates = out
+    pluginErrors = errs
+    pluginCheckedMs = checkedAt
+    nowMs = Date.now()
+  }
   readonly property color foreground: bar ? bar.barForeground : Commons.Color.foreground
 
   function count(src) {
@@ -30,6 +112,7 @@ Panel {
   }
 
   function open() {
+    nowMs = Date.now()
     root.controller.show()
     Qt.callLater(function() { if (root.opened) keyCatcher.forceActiveFocus() })
   }
@@ -48,9 +131,11 @@ Panel {
     return false
   }
 
+  // Covers both sections: the most recent of the system and plugin checks.
   function agoText() {
-    if (lastCheckedMs <= 0) return ""
-    var m = Math.floor((nowMs - lastCheckedMs) / 60000)
+    var last = Math.max(lastCheckedMs, pluginCheckedMs)
+    if (last <= 0) return ""
+    var m = Math.floor((nowMs - last) / 60000)
     if (m < 1) return "Checked just now"
     if (m < 60) return "Checked " + m + " min ago"
     var h = Math.floor(m / 60)
@@ -58,8 +143,11 @@ Panel {
   }
 
   function check() {
+    checkPlugins()
     if (checkProc.running) return
     errorMessage = ""
+    archDone = false
+    aurDone = false
     checking = true
     checkProc.running = true
   }
@@ -125,15 +213,16 @@ Panel {
   Timer {
     interval: 30000
     repeat: true
-    running: root.opened && root.lastCheckedMs > 0
+    running: root.opened && (root.lastCheckedMs > 0 || root.pluginCheckedMs > 0)
     onTriggered: root.nowMs = Date.now()
   }
 
   Process {
     id: checkProc
-    command: [String(Qt.resolvedUrl("backend/check-updates")).replace(/^file:\/\//, "")]
+    command: [root.backendPath("check-updates")]
     stdout: StdioCollector {
-      waitForEnd: true
+      waitForEnd: false
+      onDataChanged: root.scanSystemProgress(text)
       onStreamFinished: root.updates = root.parse(text)
     }
     onExited: function(code) {
@@ -143,6 +232,35 @@ Panel {
     }
   }
 
+  FileView {
+    id: pluginState
+    path: root.pluginStatePath
+    printErrors: false
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: root.parsePlugins(text())
+    onLoadFailed: root.parsePlugins("")
+  }
+
+  // The update script replaces the file with mv, which a watch can miss, so
+  // poll as well while an update is running.
+  Timer {
+    interval: 1000
+    repeat: true
+    running: root.pluginBusy
+    onTriggered: pluginState.reload()
+  }
+
+  Process {
+    id: checkPluginsProc
+    command: [root.backendPath("check-plugins")]
+    stdout: StdioCollector {
+      waitForEnd: false
+      onDataChanged: root.scanPluginProgress(text)
+    }
+    onExited: { root.pluginChecking = false; pluginState.reload() }
+  }
+
   KeyboardPanel {
     id: panel
     anchorItem: root.anchorItem
@@ -150,7 +268,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(400))
+    contentWidth: panel.fittedContentWidth(Style.space(480))
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
     PanelKeyCatcher {

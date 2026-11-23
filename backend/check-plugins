@@ -1,0 +1,73 @@
+#!/bin/bash
+# Checks every git-managed plugin in ~/.config/omarchy/plugins for upstream
+# changes and writes the result to the state file the flyout watches (also
+# printed to stdout). One tab-separated line each:
+#   checked<TAB><epoch seconds>
+#   plugin<TAB>id<TAB>name<TAB>from<TAB>to<TAB>commits<TAB>status
+#   error<TAB>id
+# status is "pending", or "diverged" when the checkout has local commits and
+# can't be fast-forwarded. from/to are manifest versions, or short commit
+# hashes when the version wasn't bumped.
+# While running, stdout also gets "total<TAB>N" and one "done<TAB>id" per
+# plugin fetched, so the flyout can show progress.
+set -u
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-updatecheck"
+STATE="$STATE_DIR/plugins.tsv"
+mkdir -p "$STATE_DIR"
+
+# Strip tabs/newlines so a field can't break the line format.
+clean() { local v=${1//[$'\t\r\n']/}; printf '%s' "${v:0:$2}"; }
+
+check_one() {
+  local dir=$1 id
+  id=$(basename "$dir")
+  if ! timeout 30 git -C "$dir" fetch --quiet origin HEAD 2>/dev/null; then
+    printf 'error\t%s\n' "$id"
+    return
+  fi
+  local behind
+  behind=$(git -C "$dir" rev-list --count HEAD..FETCH_HEAD 2>/dev/null) || { printf 'error\t%s\n' "$id"; return; }
+  (( behind > 0 )) || return
+
+  local status=pending
+  git -C "$dir" merge-base --is-ancestor HEAD FETCH_HEAD 2>/dev/null || status=diverged
+
+  local name from to
+  { read -r name; read -r from; } < <(jq -r '(.name // ""), (.version // "")' "$dir/manifest.json" 2>/dev/null)
+  to=$(git -C "$dir" show FETCH_HEAD:manifest.json 2>/dev/null | jq -r '.version // empty' 2>/dev/null)
+  if [[ -z $from || -z $to || $from == "$to" ]]; then
+    from=$(git -C "$dir" rev-parse --short HEAD)
+    to=$(git -C "$dir" rev-parse --short FETCH_HEAD)
+  fi
+  printf 'plugin\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$(clean "${name:-$id}" 80)" \
+    "$(clean "$from" 40)" "$(clean "$to" 40)" "$behind" "$status"
+}
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp" "$tmp".*' EXIT
+
+# Fetch in parallel; each plugin writes its own file so lines don't interleave.
+dirs=()
+for dir in "$PLUGINS_DIR"/*/; do [[ -d $dir/.git ]] && dirs+=("${dir%/}"); done
+printf 'total\t%s\n' "${#dirs[@]}"
+i=0
+for dir in "${dirs[@]}"; do
+  { check_one "$dir" >"$tmp.$i"; printf 'done\t%s\n' "$(basename "$dir")"; } &
+  i=$((i + 1))
+done
+wait
+
+{
+  printf 'checked\t%s\n' "$(date +%s)"
+  cat "$tmp".* 2>/dev/null | sort -t$'\t' -k1,1r -k3,3f
+} >"$tmp"
+
+# Don't clobber a run of update-plugins that is mid-flight.
+exec 9>"$STATE.lock"
+flock 9
+cp "$tmp" "$STATE.new" && mv "$STATE.new" "$STATE"
+cat "$STATE"

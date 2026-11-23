@@ -1,0 +1,69 @@
+#!/bin/bash
+# update-plugins <id>...
+# Updates the given git-managed plugins the way `omarchy plugin update --yes`
+# does (fast-forward, validate, roll back on failure), but records progress
+# in the state file the flyout watches and reloads the shell only once.
+# Launched detached: pulling any plugin makes the shell reload every plugin,
+# which would kill a process the flyout owned.
+set -u
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-updatecheck"
+STATE="$STATE_DIR/plugins.tsv"
+mkdir -p "$STATE_DIR"
+touch "$STATE"
+
+# set_status <id> <status|"">  — "" drops the plugin's line (it's up to date).
+set_status() {
+  (
+    flock 9
+    awk -F'\t' -v OFS='\t' -v id="$1" -v st="$2" '
+      $1 == "plugin" && $2 == id { if (st == "") next; $7 = st }
+      { print }' "$STATE" >"$STATE.new" && mv "$STATE.new" "$STATE"
+  ) 9>"$STATE.lock"
+}
+
+ids=()
+for id in "$@"; do
+  [[ $id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $id != *..* ]] || continue
+  [[ -d $PLUGINS_DIR/$id/.git ]] || continue
+  ids+=("$id")
+done
+(( ${#ids[@]} )) || exit 0
+
+for id in "${ids[@]}"; do set_status "$id" updating; done
+
+updated=() failed=()
+for id in "${ids[@]}"; do
+  dir="$PLUGINS_DIR/$id"
+  if ! timeout 60 git -C "$dir" fetch --quiet origin HEAD; then
+    set_status "$id" failed; failed+=("$id"); continue
+  fi
+  if [[ $(git -C "$dir" rev-parse HEAD) == $(git -C "$dir" rev-parse FETCH_HEAD) ]]; then
+    set_status "$id" ""; continue
+  fi
+  if ! git -C "$dir" merge --ff-only FETCH_HEAD >/dev/null 2>&1; then
+    set_status "$id" blocked; failed+=("$id"); continue
+  fi
+  if ! omarchy-plugin-validate "$dir" >/dev/null 2>&1; then
+    git -C "$dir" reset --hard ORIG_HEAD >/dev/null
+    set_status "$id" failed; failed+=("$id"); continue
+  fi
+  set_status "$id" ""
+  updated+=("$id")
+done
+
+if (( ${#updated[@]} )); then
+  omarchy-shell shell reloadPlugins >/dev/null 2>&1
+fi
+
+if (( ${#failed[@]} )); then
+  omarchy-notification-send "Plugin updates" \
+    "Updated ${#updated[@]}, failed ${#failed[@]}: ${failed[*]}" >/dev/null 2>&1
+elif (( ${#updated[@]} )); then
+  omarchy-notification-send "Plugin updates" \
+    "Updated ${#updated[@]} plugin$( (( ${#updated[@]} == 1 )) || echo s): ${updated[*]}" >/dev/null 2>&1
+fi
+(( ${#failed[@]} == 0 ))

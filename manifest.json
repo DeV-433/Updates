@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "id": "io.github.devanshu.updatecheck",
   "name": "Updates",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Devanshu",
   "license": "MIT",
-  "description": "Check Arch, Omarchy and AUR updates in one flyout and launch the Omarchy update.",
+  "description": "Check Arch, Omarchy, AUR and plugin updates in one flyout and install them.",
   "kinds": ["bar-widget"],
   "entryPoints": { "barWidget": "BarWidget.qml" },
   "barWidget": {
     "displayName": "Updates",
-    "description": "Check Arch, Omarchy and AUR updates from one flyout",
+    "description": "Check Arch, Omarchy, AUR and plugin updates from one flyout",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right"
