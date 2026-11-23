@@ -904,12 +904,14 @@ Column {
       }
     }
 
-    // Status when there is nothing to list, or while fetching.
+    // Status while fetching, before the first check, or when only hidden
+    // plugins are left. Nothing when everything is up to date.
     Row {
       anchors.right: hiddenToggle.visible ? hiddenToggle.left : parent.right
       anchors.rightMargin: hiddenToggle.visible ? Style.space(4) : Style.space(8)
       anchors.verticalCenter: parent.verticalCenter
-      visible: pluginSection.checking || pluginSection.n === 0
+      visible: pluginSection.checking
+        || (pluginSection.n === 0 && (!pluginSection.checked || pluginSection.hidden > 0))
       spacing: Style.space(6)
       Text {
         id: pluginGlyph
@@ -935,8 +937,7 @@ Column {
         text: pluginSection.checking
           ? (view.ctl && view.ctl.pluginFetchTotal > 0
              ? "Fetching " + view.ctl.pluginFetchDone + " of " + view.ctl.pluginFetchTotal + "…" : "Fetching…")
-          : pluginSection.checked && pluginSection.hidden > 0 ? "Nothing to install"
-          : pluginSection.checked ? "All up to date"
+          : pluginSection.checked ? "Nothing to install"
           : "Not checked yet"
         color: view.muted
         font.family: Style.font.family
