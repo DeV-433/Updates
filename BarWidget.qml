@@ -7,8 +7,9 @@ BarWidget {
   moduleName: "io.github.devanshu.updatecheck"
 
   readonly property int total: panelLoader.item ? panelLoader.item.total : 0
-  readonly property bool checking: panelLoader.item ? (panelLoader.item.checking === true || panelLoader.item.pluginChecking === true
-       || panelLoader.item.pluginBusy === true) : false
+  readonly property bool checking: panelLoader.item
+    ? (panelLoader.item.checking === true || panelLoader.item.pluginChecking === true) : false
+  readonly property bool installing: panelLoader.item ? panelLoader.item.pluginBusy === true : false
 
   function injectPanel() {
     if (!panelLoader.item) return
@@ -47,23 +48,24 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.checking ? "󰓦" : "󰁉"
-    textRotation: spin.running ? spinAngle : 0
-    property real spinAngle: 0
+    // Three stacked layers, one per source (see StackIcon.qml).
+    iconComponent: Component {
+      StackIcon {
+        readonly property var panel: panelLoader.item
+        color: button.foreground
+        filled: !!panel && panel.systemTotal > 0
+        checking: !!panel && panel.checking
+        archDone: !!panel && panel.archDone
+        aurDone: !!panel && panel.aurDone
+      }
+    }
     slotSize: Style.bar.statusSlot
     tooltipText: root.checking ? "Checking for updates…"
+      : root.installing ? "Installing plugin updates…"
       : root.total > 0 ? root.total + (root.total === 1 ? " update available" : " updates available")
       : "Check for updates"
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.LeftButton) root.toggle()
-    }
-
-    NumberAnimation on spinAngle {
-      id: spin
-      running: root.checking && !Style.reduceMotion
-      from: 0; to: 360
-      duration: 1200
-      loops: Animation.Infinite
     }
   }
 }

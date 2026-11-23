@@ -14,7 +14,10 @@ to `right`).
 
 ## Usage
 
-1. Click the box icon on the bar to open the flyout.
+1. Click the layers icon on the bar to open the flyout. Its three layers are
+   Arch (bottom), Omarchy (middle) and AUR (top). The icon turns solid when
+   any system update is pending, and while checking, the layers still being
+   checked pulse from the bottom up.
 2. Press **Check**. Arch, Omarchy, AUR and your plugins are checked together,
    and each source ticks off as it finishes.
 3. Pending updates are listed by package name, repo and `old → new` version,

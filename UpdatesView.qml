@@ -424,29 +424,44 @@ Column {
       width: parent.width
       spacing: Style.space(12)
 
-      Text {
-        id: statusGlyph
+      // Before the first check this is the bar's layers icon; afterwards a
+      // glyph for the result.
+      Item {
+        id: statusIconBox
         anchors.verticalCenter: parent.verticalCenter
-        textFormat: Text.PlainText
-        text: view.phase === "clean" ? "󰗡"
-          : view.phase === "error" ? "󰗖"
-          : view.phase === "checking" ? "󰓦"
-          : "󰏗"
-        color: view.phaseColor
-        Behavior on color { ColorAnimation { duration: Style.duration(180) } }
-        font.family: Style.font.family
-        font.pixelSize: Style.font.display
-        RotationAnimator on rotation {
-          running: view.phase === "checking" && view.visible && !Style.reduceMotion
-          from: 0; to: 360
-          duration: 1400
-          loops: Animation.Infinite
-          onRunningChanged: if (!running) statusGlyph.rotation = 0
+        width: statusGlyph.implicitWidth
+        height: statusGlyph.implicitHeight
+
+        // Same drawing as the bar icon; while checking it pulses the same way.
+        StackIcon {
+          visible: view.phase === "idle" || view.phase === "checking"
+          readonly property real size: statusGlyph.font.pixelSize * 1.04
+          x: (parent.width - size) / 2
+          y: (parent.height - size) / 2
+          scale: size / 24
+          transformOrigin: Item.TopLeft
+          color: view.phaseColor
+          checking: view.phase === "checking"
+          archDone: !!view.ctl && view.ctl.archDone
+          aurDone: !!view.ctl && view.ctl.aurDone
+        }
+
+        // Result glyph; also sizes the box, so it keeps a glyph when hidden.
+        Text {
+          id: statusGlyph
+          visible: view.phase === "clean" || view.phase === "error"
+          anchors.centerIn: parent
+          textFormat: Text.PlainText
+          text: view.phase === "error" ? "󰗖" : "󰗡"
+          color: view.phaseColor
+          Behavior on color { ColorAnimation { duration: Style.duration(180) } }
+          font.family: Style.font.family
+          font.pixelSize: Style.font.display
         }
       }
 
       Column {
-        width: parent.width - statusGlyph.width - parent.spacing
+        width: parent.width - statusIconBox.width - parent.spacing
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.space(2)
         Text {
