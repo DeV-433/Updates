@@ -122,8 +122,8 @@ Panel {
 
   // Packages whose upgrade needs a reboot to take full effect.
   function isCorePackage(n) {
-    return /^linux(-lts|-zen|-hardened|-rt|-cachyos[a-z0-9-]*)?$/.test(n)
-      || /^(systemd|glibc|intel-ucode|amd-ucode)$/.test(n)
+    return /^linux(-lts|-zen|-hardened|-rt|-omarchy|-cachyos[a-z0-9-]*)?(-headers)?$/.test(n)
+      || /^(systemd|glibc|intel-ucode|amd-ucode|hyprland)$/.test(n)
       || /^nvidia(-open|-lts|-dkms|-open-dkms|-utils)?$/.test(n)
   }
   readonly property bool rebootNeeded: {

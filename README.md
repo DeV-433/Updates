@@ -43,8 +43,9 @@ Notes:
 - Plugin results are cached in `~/.cache/omarchy-updatecheck/plugins.tsv`, so
   they survive the shell reload an update causes.
 - If Arch or AUR can't be checked, the flyout says so instead of showing "up to date".
-- When a kernel, systemd, glibc, CPU microcode or NVIDIA driver update is
-  pending, the flyout says to reboot afterwards and marks those packages.
+- When a kernel (including `linux-omarchy`) or kernel headers, systemd, glibc,
+  Hyprland, CPU microcode or NVIDIA driver update is pending, the flyout says
+  to reboot afterwards and marks those packages.
 
 ## Requirements
 
